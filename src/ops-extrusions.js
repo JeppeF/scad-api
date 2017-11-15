@@ -25,6 +25,36 @@ function linear_extrude (p, s) {
   return o
 }
 
+// FIXME: this is to have more readable/less extremely verbose code below
+const vertexFromVectorArray = array => {
+  return new CSG.Vertex(new CSG.Vector3D(array))
+}
+
+const polygonFromPoints = points => {
+  // EEK talk about wrapping wrappers !
+  const vertices = points.map(point => new CSG.Vertex(new CSG.Vector3D(point)))
+  return new CSG.Polygon(vertices)
+}
+
+// Simplified, array vector rightMultiply1x3Vector
+const rightMultiply1x3VectorSimple = (matrix, vector) => {
+  const [v0, v1, v2] = vector
+  const v3 = 1
+  let x = v0 * matrix.elements[0] + v1 * matrix.elements[1] + v2 * matrix.elements[2] + v3 * matrix.elements[3]
+  let y = v0 * matrix.elements[4] + v1 * matrix.elements[5] + v2 * matrix.elements[6] + v3 * matrix.elements[7]
+  let z = v0 * matrix.elements[8] + v1 * matrix.elements[9] + v2 * matrix.elements[10] + v3 * matrix.elements[11]
+  let w = v0 * matrix.elements[12] + v1 * matrix.elements[13] + v2 * matrix.elements[14] + v3 * matrix.elements[15]
+
+  // scale such that fourth element becomes 1:
+  if (w !== 1) {
+    const invw = 1.0 / w
+    x *= invw
+    y *= invw
+    z *= invw
+  }
+  return [x, y, z]
+}
+
 /** rotate extrude / revolve
  * @param {Object} [options] - options for construction
  * @param {Integer} [options.fn=1] - resolution/number of segments of the extrusion
@@ -60,38 +90,24 @@ function rotate_extrude (params, baseShape) {
 
       matrix = CSG.Matrix4x4.rotationZ(i / fn * angle)
       stepPoints.push(
-        matrix.rightMultiply1x3Vector(
-          new CSG.Vector3D(baseShape.sides[j].vertex0.pos.x, 0, baseShape.sides[j].vertex0.pos.y)
-        )
+        rightMultiply1x3VectorSimple(matrix, [baseShape.sides[j].vertex0.pos.x, 0, baseShape.sides[j].vertex0.pos.y])
       )
 
       stepPoints.push(
-        matrix.rightMultiply1x3Vector(
-          new CSG.Vector3D(baseShape.sides[j].vertex0.pos.x, 0, baseShape.sides[j].vertex0.pos.y)
-        )
+        rightMultiply1x3VectorSimple(matrix, [baseShape.sides[j].vertex1.pos.x, 0, baseShape.sides[j].vertex1.pos.y])
       )
 
       matrix = CSG.Matrix4x4.rotationZ((i + 1) / fn * angle)
 
       stepPoints.push(
-        matrix.rightMultiply1x3Vector(
-          new CSG.Vector3D(baseShape.sides[j].vertex1.pos.x, 0, baseShape.sides[j].vertex1.pos.y)
-        )
+        rightMultiply1x3VectorSimple(matrix, [baseShape.sides[j].vertex1.pos.x, 0, baseShape.sides[j].vertex1.pos.y])
       )
 
       stepPoints.push(
-        matrix.rightMultiply1x3Vector(
-          new CSG.Vector3D(baseShape.sides[j].vertex0.pos.x, 0, baseShape.sides[j].vertex0.pos.y)
-        )
+        rightMultiply1x3VectorSimple(matrix, [baseShape.sides[j].vertex0.pos.x, 0, baseShape.sides[j].vertex0.pos.y])
       )
-
-      const p1 = new CSG.Polygon([
-        new CSG.Vertex(stepPoints[0]),
-        new CSG.Vertex(stepPoints[1]),
-        new CSG.Vertex(stepPoints[2]),
-        new CSG.Vertex(stepPoints[3]) // we make a square polygon (instead of 2 triangles)
-      ])
-      points.push(p1)
+      // we make a square polygon (instead of 2 triangles)
+      points.push(polygonFromPoints(stepPoints))
     }
   }
   return CSG.fromPolygons(points)
