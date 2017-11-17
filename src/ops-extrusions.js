@@ -62,15 +62,19 @@ function clamp (value, min, max) {
 const toPoints = cag => {
   let points
   if ('sides' in cag) {
-    points = cag.sides.map(side => [side.vertex0.pos.x, side.vertex0.pos.y])
-      /* let v0 = side.vertex0
-      return v0.pos
-    }) */
+    console.log('foo')
+    points = []
+    cag.sides.forEach(side =>{
+      points.push([side.vertex0.pos.x, side.vertex0.pos.y])
+      points.push([side.vertex1.pos.x, side.vertex1.pos.y])
+    })
+    //cag.sides.map(side => [side.vertex0.pos.x, side.vertex0.pos.y])
+    //, side.vertex1.pos.x, side.vertex1.pos.y])
     // due to the logic of CAG.fromPoints()
     // move the first point to the last
-    if (points.length > 0) {
+    /*if (points.length > 0) {
       points.push(points.shift())
-    }
+    }*/
   } else if ('points' in cag) {
     points = cag.points.map(p => ([p.x, p.y]))
   }
@@ -102,7 +106,7 @@ function rotate_extrude (params, baseShape) {
   if (arguments.length < 2) { // FIXME: what the hell ??? just put params second !
     baseShape = params
   }
-  if (fn < 3) fn = 3
+  if (fn < 1) fn = 1
   const segments = fn // for clarity
 
   let polygons = []
@@ -117,9 +121,9 @@ function rotate_extrude (params, baseShape) {
   // 2. for each set of points do the extrusion operation IN OPOSITE DIRECTIONS
   // 3. union the two resulting solids
 
-  console.log('shapePoints', shapePoints)
+  console.log('shapePoints', shapePoints, baseShape.sides)
   // for each of the intermediary steps in the extrusion
-  for (let i = 1; i < segments+1; i++) {
+  for (let i = 1; i < segments + 1; i++) {
     // o.{x,y} -> rotate([0,0,i:0..360], obj->{o.x,0,o.y})
     const curAngle = degToRad(i / segments * angle)// startAngle + i * (1.0 / segments) * angle
     let sin = Math.sin(curAngle)
@@ -147,10 +151,11 @@ function rotate_extrude (params, baseShape) {
       const pointBP = rightMultiply1x3VectorSimple(curMatrix, [nextPoint[0], 0, nextPoint[1]])
       const tolerance = 0.001
 
+      console.log(`point ${j} edge connecting ${j} to ${j + 1}`)
       let overlappingPoints = false
       if (Math.abs(pointA[0] - pointAP[0]) < tolerance && Math.abs(pointB[1] - pointBP[1]) < tolerance) {
-        console.log('identical / overlapping points, what now ?')
-        console.log('at point index', j, 'pointA', pointA[0], pointA[2], 'pointAP', pointAP[0], pointAP[2])
+        console.log('identical / overlapping points (from current angle and next one), what now ?')
+        // console.log('at point index', j, 'pointA', pointA[0], pointA[2], 'pointAP', pointAP[0], pointAP[2])
         // continue
         overlappingPoints = true
       }
@@ -158,9 +163,9 @@ function rotate_extrude (params, baseShape) {
 
       // single quad : bad results
       // let polyPoints = [pointA, pointB, pointBP, pointAP]
-      // polygons.push(polygonFromPoints(polyPoints)
+      // polygons.push(polygonFromPoints(polyPoints))
 
-      if (angle < 0) {
+      if (angle > 0) {
         // CW
         polygons.push(polygonFromPoints([pointA, pointB, pointBP]))
         if (!overlappingPoints) {
@@ -174,22 +179,17 @@ function rotate_extrude (params, baseShape) {
         polygons.push(polygonFromPoints([pointBP, pointB, pointA]))
       }
     }
-    // if we do not do a full extrusion
+    // if we do not do a full extrusion, we want caps at both ends (closed volume)
     if (Math.abs(angle) < 360) {
       let endMatrix = CSG.Matrix4x4.rotationX(90)
       const endCap = baseShape._toPlanePolygons({flipped: true})
         .map(x => x.transform(endMatrix))
-      
+
       let startMatrix = CSG.Matrix4x4.rotationX(90).multiply(
         CSG.Matrix4x4.rotationZ(-angle)
       )
       const startCap = baseShape._toPlanePolygons({flipped: false})
       .map(x => x.transform(startMatrix))
-      /* let endCapPolygons = baseShape.sides.map(function (side) {
-        return side.toPolygon3D(0, 0)
-      })
-      //const endCap = baseShape._toPlanePolygons({flipped: false})*/
-      console.log('endCap', endCap)
       polygons = polygons.concat(endCap).concat(startCap)
     }
 
