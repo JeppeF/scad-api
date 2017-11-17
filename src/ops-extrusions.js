@@ -55,6 +55,31 @@ const rightMultiply1x3VectorSimple = (matrix, vector) => {
   return [x, y, z]
 }
 
+function clamp (value, min, max) {
+  return Math.min(Math.max(value, min), max)
+}
+
+const toPoints = cag => {
+  let points
+  if ('sides' in cag) {
+    points = cag.sides.map(side => [side.vertex0.pos.x, side.vertex0.pos.y])
+      /* let v0 = side.vertex0
+      return v0.pos
+    }) */
+    // due to the logic of CAG.fromPoints()
+    // move the first point to the last
+    if (points.length > 0) {
+      points.push(points.shift())
+    }
+  } else if ('points' in cag) {
+    points = cag.points.map(p => ([p.x, p.y]))
+  }
+
+  return points
+}
+
+const degToRad = deg => (Math.PI / 180) * deg
+
 /** rotate extrude / revolve
  * @param {Object} [options] - options for construction
  * @param {Integer} [options.fn=1] - resolution/number of segments of the extrusion
@@ -72,19 +97,115 @@ function rotate_extrude (params, baseShape) {
   params = Object.assign({}, defaults, params)
   let {fn, startAngle, angle} = params
 
-  // angle = clamp(angle, 0, Math.PI * 2)
+  // angle = clamp(angle, 0, Math.PI * 2) // limit angle
+
   if (arguments.length < 2) { // FIXME: what the hell ??? just put params second !
     baseShape = params
   }
   if (fn < 3) fn = 3
+  const segments = fn // for clarity
 
-  let points = []
+  let polygons = []
 
+  // convert baseshape to just an array of points, easier to deal with
+  const shapePoints = toPoints(baseShape)
+  // determine if the rotate_extrude can be computed in the first place
+  // ie all the points have to be either x > 0 or x < 0
+
+  // TODO : for the future : generic solution to always have a valid solid, even if points go beyond x/ -x
+  // 1. split points up between all those on the 'left' side of the axis (x<0) & those on the 'righ' (x>0)
+  // 2. for each set of points do the extrusion operation IN OPOSITE DIRECTIONS
+  // 3. union the two resulting solids
+
+  console.log('shapePoints', shapePoints)
   // for each of the intermediary steps in the extrusion
-  for (let i = 0; i < fn; i++) {
+  for (let i = 1; i < segments+1; i++) {
     // o.{x,y} -> rotate([0,0,i:0..360], obj->{o.x,0,o.y})
+    const curAngle = degToRad(i / segments * angle)// startAngle + i * (1.0 / segments) * angle
+    let sin = Math.sin(curAngle)
+    let cos = Math.cos(curAngle)
+
+    const prevAngle = degToRad((i - 1) / segments * angle)// startAngle + (i - 1) * (1.0 / segments) * angle
+    let prevSin = Math.sin(prevAngle)
+    let prevCos = Math.cos(prevAngle)
+
+    prevSin = prevCos = sin = cos = 1
+
+    // console.log('shapePoints', shapePoints)
+    for (let j = 0; j < shapePoints.length - 1; j++) {
+      // 2 points of a side
+      const curPoint = shapePoints[j]
+      const nextPoint = shapePoints[j + 1]
+
+      let prevMatrix = CSG.Matrix4x4.rotationZ((i - 1) / segments * angle)
+      let curMatrix = CSG.Matrix4x4.rotationZ((i) / segments * angle)
+
+      const pointA = rightMultiply1x3VectorSimple(prevMatrix, [curPoint[0], 0, curPoint[1]])
+      const pointAP = rightMultiply1x3VectorSimple(curMatrix, [curPoint[0], 0, curPoint[1]])
+
+      const pointB = rightMultiply1x3VectorSimple(prevMatrix, [nextPoint[0], 0, nextPoint[1]])
+      const pointBP = rightMultiply1x3VectorSimple(curMatrix, [nextPoint[0], 0, nextPoint[1]])
+      const tolerance = 0.001
+
+      let overlappingPoints = false
+      if (Math.abs(pointA[0] - pointAP[0]) < tolerance && Math.abs(pointB[1] - pointBP[1]) < tolerance) {
+        console.log('identical / overlapping points, what now ?')
+        console.log('at point index', j, 'pointA', pointA[0], pointA[2], 'pointAP', pointAP[0], pointAP[2])
+        // continue
+        overlappingPoints = true
+      }
+      overlappingPoints = false
+
+      // single quad : bad results
+      // let polyPoints = [pointA, pointB, pointBP, pointAP]
+      // polygons.push(polygonFromPoints(polyPoints)
+
+      if (angle < 0) {
+        // CW
+        polygons.push(polygonFromPoints([pointA, pointB, pointBP]))
+        if (!overlappingPoints) {
+          polygons.push(polygonFromPoints([pointBP, pointAP, pointA]))
+        }
+      } else {
+        // CCW
+        if (!overlappingPoints) {
+          polygons.push(polygonFromPoints([pointA, pointAP, pointBP]))
+        }
+        polygons.push(polygonFromPoints([pointBP, pointB, pointA]))
+      }
+    }
+    // if we do not do a full extrusion
+    if (Math.abs(angle) < 360) {
+      let endMatrix = CSG.Matrix4x4.rotationX(90)
+      const endCap = baseShape._toPlanePolygons({flipped: true})
+        .map(x => x.transform(endMatrix))
+      
+      let startMatrix = CSG.Matrix4x4.rotationX(90).multiply(
+        CSG.Matrix4x4.rotationZ(-angle)
+      )
+      const startCap = baseShape._toPlanePolygons({flipped: false})
+      .map(x => x.transform(startMatrix))
+      /* let endCapPolygons = baseShape.sides.map(function (side) {
+        return side.toPolygon3D(0, 0)
+      })
+      //const endCap = baseShape._toPlanePolygons({flipped: false})*/
+      console.log('endCap', endCap)
+      polygons = polygons.concat(endCap).concat(startCap)
+    }
+
+    /* const pointA = rightMultiply1x3VectorSimple(prevMatrix, [curPoint[0] * prevSin, 0, curPoint[1] * prevCos])
+      const pointAP = rightMultiply1x3VectorSimple(curMatrix, [curPoint[0] * sin, 0, curPoint[1] * cos])
+
+      const pointB = rightMultiply1x3VectorSimple(prevMatrix, [nextPoint[0] * prevSin, 0, nextPoint[1] * prevCos])
+      const pointBP = rightMultiply1x3VectorSimple(curMatrix, [nextPoint[0] * sin, 0, nextPoint[1] * cos]) */
+
+    /*
+    // for each side of the 2d shape
     for (let j = 0; j < baseShape.sides.length; j++) {
       // has o.sides[j].vertex{0,1}.pos (only x,y)
+      // TODO : check if points of the baseShape are in the valid 'quadrant' ie: no point beyond 0 , otherwise you
+      // get self overlapping shapes
+
       let stepPoints = []
       let matrix
 
@@ -107,10 +228,10 @@ function rotate_extrude (params, baseShape) {
         rightMultiply1x3VectorSimple(matrix, [baseShape.sides[j].vertex0.pos.x, 0, baseShape.sides[j].vertex0.pos.y])
       )
       // we make a square polygon (instead of 2 triangles)
-      points.push(polygonFromPoints(stepPoints))
-    }
+      polygons.push(polygonFromPoints(stepPoints))
+    } */
   }
-  return CSG.fromPolygons(points)
+  return CSG.fromPolygons(polygons).reTesselated().canonicalized()
 }
 
 function rectangular_extrude (pa, p) {
