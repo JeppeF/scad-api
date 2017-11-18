@@ -23,5 +23,5 @@ test('intersection of torus where ro===r1 and cube', t => {
     cube()
   )
 
-  t.deepEqual(obs.polygons.length, 71)
+  t.deepEqual(obs.polygons.length, 66)
 })

@@ -243,7 +243,7 @@ function cylinder (p) {
  * @example
  * let torus1 = torus({
  *   ri: 10
- * });
+ * })
  */
 function torus (params) {
   const defaults = {
@@ -254,16 +254,16 @@ function torus (params) {
     roti: 0
   }
   params = Object.assign({}, defaults, params)
+  
+  const limits = {
+    fni: {min:3},
+    fno: {min:3}
+  }
+
   let {ri, ro, fni, fno, roti} = params
 
   if (fni < 3) fni = 3
   if (fno < 3) fno = 3
-  /* FIXME: this below is a hack/workaround !!
-   if ro === ri , some operations such as intersections will fail, as far as I can see 
-   because of self intersecting/coplanar faces at the center of the torus
-   this also implies that this can fail for other meshes
-  */
-  if (ro === ri) ri = ro + 0.000000000001
 
   let baseCircle = circle({r: ri, fn: fni, center: true})
 
