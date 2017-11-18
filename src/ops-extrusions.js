@@ -142,7 +142,7 @@ function rotate_extrude (params, baseShape) {
 
   // for each of the intermediary steps in the extrusion
   for (let i = 1; i < segments + 1; i++) {
-    // console.log('shapePoints', shapePoints)
+    // for each side of the 2d shape
     for (let j = 0; j < shapePoints.length - 1; j++) {
       // 2 points of a side
       const curPoint = shapePoints[j]
@@ -157,12 +157,10 @@ function rotate_extrude (params, baseShape) {
       const pointB = rightMultiply1x3VectorSimple(prevMatrix, [nextPoint[0], 0, nextPoint[1]])
       const pointBP = rightMultiply1x3VectorSimple(curMatrix, [nextPoint[0], 0, nextPoint[1]])
 
-      console.log(`point ${j} edge connecting ${j} to ${j + 1}`)
+      // console.log(`point ${j} edge connecting ${j} to ${j + 1}`)
       let overlappingPoints = false
       if (Math.abs(pointA[0] - pointAP[0]) < overlapTolerance && Math.abs(pointB[1] - pointBP[1]) < overlapTolerance) {
-        console.log('identical / overlapping points (from current angle and next one), what now ?')
-        // console.log('at point index', j, 'pointA', pointA[0], pointA[2], 'pointAP', pointAP[0], pointAP[2])
-        // continue
+        // console.log('identical / overlapping points (from current angle and next one), what now ?')
         overlappingPoints = true
       }
 
