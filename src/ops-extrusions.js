@@ -64,15 +64,15 @@ const toPoints = cag => {
   if ('sides' in cag) {
     console.log('foo')
     points = []
-    cag.sides.forEach(side =>{
+    cag.sides.forEach(side => {
       points.push([side.vertex0.pos.x, side.vertex0.pos.y])
       points.push([side.vertex1.pos.x, side.vertex1.pos.y])
     })
-    //cag.sides.map(side => [side.vertex0.pos.x, side.vertex0.pos.y])
+    // cag.sides.map(side => [side.vertex0.pos.x, side.vertex0.pos.y])
     //, side.vertex1.pos.x, side.vertex1.pos.y])
     // due to the logic of CAG.fromPoints()
     // move the first point to the last
-    /*if (points.length > 0) {
+    /* if (points.length > 0) {
       points.push(points.shift())
     }*/
   } else if ('points' in cag) {
@@ -116,26 +116,21 @@ function rotate_extrude (params, baseShape) {
   // determine if the rotate_extrude can be computed in the first place
   // ie all the points have to be either x > 0 or x < 0
 
-  // TODO : for the future : generic solution to always have a valid solid, even if points go beyond x/ -x
+  // generic solution to always have a valid solid, even if points go beyond x/ -x
   // 1. split points up between all those on the 'left' side of the axis (x<0) & those on the 'righ' (x>0)
   // 2. for each set of points do the extrusion operation IN OPOSITE DIRECTIONS
   // 3. union the two resulting solids
 
+  const pointsWithNegativeX = shapePoints.filter(x => x[0] < 0)
+  const pointsWithPositiveX = shapePoints.filter(x => x[0] >= 0)
+  const arePointsWithNegAndPosX = pointsWithNegativeX.length > 0 && pointsWithPositiveX.length > 0
+
+  console.log('negXs', pointsWithNegativeX, 'pointsWithPositiveX', pointsWithPositiveX, 'arePointsWithNegAndPosX', arePointsWithNegAndPosX)
   console.log('shapePoints', shapePoints, baseShape.sides)
+  
   const flipped = angle > 0
   // for each of the intermediary steps in the extrusion
   for (let i = 1; i < segments + 1; i++) {
-    // o.{x,y} -> rotate([0,0,i:0..360], obj->{o.x,0,o.y})
-    const curAngle = degToRad(i / segments * angle)// startAngle + i * (1.0 / segments) * angle
-    let sin = Math.sin(curAngle)
-    let cos = Math.cos(curAngle)
-
-    const prevAngle = degToRad((i - 1) / segments * angle)// startAngle + (i - 1) * (1.0 / segments) * angle
-    let prevSin = Math.sin(prevAngle)
-    let prevCos = Math.cos(prevAngle)
-
-    prevSin = prevCos = sin = cos = 1
-
     // console.log('shapePoints', shapePoints)
     for (let j = 0; j < shapePoints.length - 1; j++) {
       // 2 points of a side
@@ -143,7 +138,7 @@ function rotate_extrude (params, baseShape) {
       const nextPoint = shapePoints[j + 1]
 
       let prevMatrix = CSG.Matrix4x4.rotationZ((i - 1) / segments * angle)
-      let curMatrix = CSG.Matrix4x4.rotationZ((i) / segments * angle)
+      let curMatrix = CSG.Matrix4x4.rotationZ(i / segments * angle)
 
       const pointA = rightMultiply1x3VectorSimple(prevMatrix, [curPoint[0], 0, curPoint[1]])
       const pointAP = rightMultiply1x3VectorSimple(curMatrix, [curPoint[0], 0, curPoint[1]])
@@ -160,9 +155,10 @@ function rotate_extrude (params, baseShape) {
         // continue
         overlappingPoints = true
       }
-      //overlappingPoints = false
 
-      // single quad : bad results
+      // we do not generate a single quad because:
+      // 1. it does not allow eliminating unneeded triangles in case of overlapping points
+      // 2. the current cleanup routines of csg.js create degenerate shapes from those quads
       // let polyPoints = [pointA, pointB, pointBP, pointAP]
       // polygons.push(polygonFromPoints(polyPoints))
 
