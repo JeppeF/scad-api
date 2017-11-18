@@ -74,7 +74,7 @@ const toPoints = cag => {
     // move the first point to the last
     /* if (points.length > 0) {
       points.push(points.shift())
-    }*/
+    } */
   } else if ('points' in cag) {
     points = cag.points.map(p => ([p.x, p.y]))
   }
@@ -93,6 +93,7 @@ const degToRad = deg => (Math.PI / 180) * deg
  * let revolved = rotate_extrude({fn: 10}, square())
  */
 function rotate_extrude (params, baseShape) {
+  // note, we should perhaps alias this to revolve() as well
   const defaults = {
     fn: 32,
     startAngle: 0,
@@ -101,18 +102,25 @@ function rotate_extrude (params, baseShape) {
   params = Object.assign({}, defaults, params)
   let {fn, startAngle, angle} = params
 
-  // angle = clamp(angle, 0, Math.PI * 2) // limit angle
-
   if (arguments.length < 2) { // FIXME: what the hell ??? just put params second !
     baseShape = params
   }
-  if (fn < 1) fn = 1
-  const segments = fn // for clarity
-
-  let polygons = []
-
+  // are we dealing with a positive or negative angle (for normals flipping)
+  const flipped = angle > 0 
+  // limit actual angle between 0 & 360, regardless of direction
+  const totalAngle = flipped ? clamp((startAngle + angle), 0, 360) : clamp((startAngle + angle), -360, 0)
+  // adapt to the totalAngle : 1 extra segment per 45 degs if not 360 deg extrusion
+  // needs to be at least one and higher then the input resolution
+  const segments = Math.max(
+    Math.floor(Math.abs(totalAngle) / 45),
+    1,
+    fn
+  )
+  // maximum distance per axis between two points before considering them to be the same
+  const overlapTolerance = 0.00001 
   // convert baseshape to just an array of points, easier to deal with
   const shapePoints = toPoints(baseShape)
+
   // determine if the rotate_extrude can be computed in the first place
   // ie all the points have to be either x > 0 or x < 0
 
@@ -120,6 +128,8 @@ function rotate_extrude (params, baseShape) {
   // 1. split points up between all those on the 'left' side of the axis (x<0) & those on the 'righ' (x>0)
   // 2. for each set of points do the extrusion operation IN OPOSITE DIRECTIONS
   // 3. union the two resulting solids
+  
+  // 1. alt : OR : just cap of points at the axis ?
 
   const pointsWithNegativeX = shapePoints.filter(x => x[0] < 0)
   const pointsWithPositiveX = shapePoints.filter(x => x[0] >= 0)
@@ -127,8 +137,9 @@ function rotate_extrude (params, baseShape) {
 
   console.log('negXs', pointsWithNegativeX, 'pointsWithPositiveX', pointsWithPositiveX, 'arePointsWithNegAndPosX', arePointsWithNegAndPosX)
   console.log('shapePoints', shapePoints, baseShape.sides)
-  
-  const flipped = angle > 0
+
+  let polygons = []
+
   // for each of the intermediary steps in the extrusion
   for (let i = 1; i < segments + 1; i++) {
     // console.log('shapePoints', shapePoints)
@@ -137,19 +148,18 @@ function rotate_extrude (params, baseShape) {
       const curPoint = shapePoints[j]
       const nextPoint = shapePoints[j + 1]
 
-      let prevMatrix = CSG.Matrix4x4.rotationZ((i - 1) / segments * angle)
-      let curMatrix = CSG.Matrix4x4.rotationZ(i / segments * angle)
+      // compute matrix for current and next segment angle
+      let prevMatrix = CSG.Matrix4x4.rotationZ((i - 1) / segments * angle + startAngle)
+      let curMatrix = CSG.Matrix4x4.rotationZ(i / segments * angle + startAngle)
 
       const pointA = rightMultiply1x3VectorSimple(prevMatrix, [curPoint[0], 0, curPoint[1]])
       const pointAP = rightMultiply1x3VectorSimple(curMatrix, [curPoint[0], 0, curPoint[1]])
-
       const pointB = rightMultiply1x3VectorSimple(prevMatrix, [nextPoint[0], 0, nextPoint[1]])
       const pointBP = rightMultiply1x3VectorSimple(curMatrix, [nextPoint[0], 0, nextPoint[1]])
-      const tolerance = 0.001
 
       console.log(`point ${j} edge connecting ${j} to ${j + 1}`)
       let overlappingPoints = false
-      if (Math.abs(pointA[0] - pointAP[0]) < tolerance && Math.abs(pointB[1] - pointBP[1]) < tolerance) {
+      if (Math.abs(pointA[0] - pointAP[0]) < overlapTolerance && Math.abs(pointB[1] - pointBP[1]) < overlapTolerance) {
         console.log('identical / overlapping points (from current angle and next one), what now ?')
         // console.log('at point index', j, 'pointA', pointA[0], pointA[2], 'pointAP', pointAP[0], pointAP[2])
         // continue
@@ -178,12 +188,14 @@ function rotate_extrude (params, baseShape) {
     }
     // if we do not do a full extrusion, we want caps at both ends (closed volume)
     if (Math.abs(angle) < 360) {
-      const endMatrix = CSG.Matrix4x4.rotationX(90)
+      const endMatrix = CSG.Matrix4x4.rotationX(90).multiply(
+        CSG.Matrix4x4.rotationZ(-startAngle)
+      )
       const endCap = baseShape._toPlanePolygons({flipped: flipped})
         .map(x => x.transform(endMatrix))
 
       const startMatrix = CSG.Matrix4x4.rotationX(90).multiply(
-        CSG.Matrix4x4.rotationZ(-angle)
+        CSG.Matrix4x4.rotationZ(-angle - startAngle)
       )
       const startCap = baseShape._toPlanePolygons({flipped: !flipped})
         .map(x => x.transform(startMatrix))
