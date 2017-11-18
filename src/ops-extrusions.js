@@ -122,6 +122,7 @@ function rotate_extrude (params, baseShape) {
   // 3. union the two resulting solids
 
   console.log('shapePoints', shapePoints, baseShape.sides)
+  const flipped = angle > 0
   // for each of the intermediary steps in the extrusion
   for (let i = 1; i < segments + 1; i++) {
     // o.{x,y} -> rotate([0,0,i:0..360], obj->{o.x,0,o.y})
@@ -159,13 +160,13 @@ function rotate_extrude (params, baseShape) {
         // continue
         overlappingPoints = true
       }
-      overlappingPoints = false
+      //overlappingPoints = false
 
       // single quad : bad results
       // let polyPoints = [pointA, pointB, pointBP, pointAP]
       // polygons.push(polygonFromPoints(polyPoints))
 
-      if (angle > 0) {
+      if (flipped) {
         // CW
         polygons.push(polygonFromPoints([pointA, pointB, pointBP]))
         if (!overlappingPoints) {
@@ -181,15 +182,15 @@ function rotate_extrude (params, baseShape) {
     }
     // if we do not do a full extrusion, we want caps at both ends (closed volume)
     if (Math.abs(angle) < 360) {
-      let endMatrix = CSG.Matrix4x4.rotationX(90)
-      const endCap = baseShape._toPlanePolygons({flipped: true})
+      const endMatrix = CSG.Matrix4x4.rotationX(90)
+      const endCap = baseShape._toPlanePolygons({flipped: flipped})
         .map(x => x.transform(endMatrix))
 
-      let startMatrix = CSG.Matrix4x4.rotationX(90).multiply(
+      const startMatrix = CSG.Matrix4x4.rotationX(90).multiply(
         CSG.Matrix4x4.rotationZ(-angle)
       )
-      const startCap = baseShape._toPlanePolygons({flipped: false})
-      .map(x => x.transform(startMatrix))
+      const startCap = baseShape._toPlanePolygons({flipped: !flipped})
+        .map(x => x.transform(startMatrix))
       polygons = polygons.concat(endCap).concat(startCap)
     }
 
